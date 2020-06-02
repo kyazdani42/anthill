@@ -1,6 +1,7 @@
-use std::collections::HashMap;
 use std::net::TcpStream;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use super::config::Config;
 use super::mailbox::MailBox;
@@ -13,22 +14,12 @@ enum Password {
 pub struct Account {
     pub name: String,
     pub store: String,
-    pub mailboxes: Vec<MailBox>,
+    pub mailboxes: Vec<Arc<Mutex<MailBox>>>,
     with_ssl: bool,
     host: String,
     port: u16,
     login: String,
     password: Password,
-    session: Option<imap::Session<TcpStream>>,
-}
-
-fn mailboxes_from_hashmap(mb: HashMap<String, MailBox>) -> Vec<MailBox> {
-    let mut mbx = Vec::with_capacity(mb.len());
-    for (_, v) in mb {
-        mbx.push(v);
-    }
-
-    mbx
 }
 
 fn get_password(cmd: &str) -> Result<Password, String> {
@@ -52,50 +43,67 @@ impl Account {
             store,
             name,
             port: data.port,
-            session: None,
             with_ssl: data.ssl_type,
             host: data.url,
             login: data.user,
             password: get_password(&data.pass_cmd)?,
-            mailboxes: mailboxes_from_hashmap(data.mailboxes),
+            mailboxes: data
+                .mailboxes
+                .iter()
+                .map(|(_, d)| Arc::new(Mutex::new(MailBox::new(&d.local, &d.remote))))
+                .collect(),
         })
     }
 
-    pub fn connect(&mut self) -> imap::error::Result<()> {
-        let stream = TcpStream::connect(&format!("{}:{}", self.host, self.port))?;
-
+    pub fn connect(&mut self) {
         let pass = match &self.password {
-            Password::Static(p) => p,
-            Password::GPG(p) => p,
+            Password::Static(p) => p.to_string(),
+            Password::GPG(p) => p.to_string(),
         };
 
-        let session = Some(
-            imap::Client::new(stream)
-                .login(&self.login, pass)
-                .map_err(|e| e.0)?,
-        );
+        let mut threads = vec![];
+        for mb in &self.mailboxes {
+            let mailbox = mb.clone();
+            let login = self.login.to_string();
+            let v = format!("{}:{}", self.host.clone(), self.port);
+            let pass = pass.to_string();
+            threads.push(thread::spawn(move || {
+                let stream = match TcpStream::connect(v) {
+                    Ok(s) => s,
+                    Err(e) => return eprintln!("could not connect to Tcp Stream: {}", e),
+                };
+                let session = match imap::Client::new(stream).login(login, pass.to_string()) {
+                    Ok(s) => s,
+                    Err(e) => return eprintln!("could not login to imap session: {}", e.0),
+                };
 
-        self.session = session;
+                mailbox.lock().expect("acquiring lock").set_session(session);
+            }));
+        }
 
-        Ok(())
+        for tx in threads {
+            tx.join().expect("waiting for thread to finish connecting");
+        }
     }
 
     pub fn logout(&mut self) {
-        if let Some(ref mut s) = self.session {
-            s.logout().expect("logging out");
-            self.session = None;
+        for mb in &mut self.mailboxes {
+            mb.lock().expect("acquiring lock").logout();
         }
     }
 
     pub fn is_logged_in(&self) -> bool {
-        self.session.is_some()
+        self.mailboxes
+            .iter()
+            .any(|v| v.lock().expect("acquiring lock").session.is_some())
     }
 
     pub fn sync(&mut self) {
-        for mailbox in &self.mailboxes.clone() {
-            if let Some(ref mut s) = self.session {
-                mailbox.sync(s, &format!("{}/{}", self.store, self.name));
-            }
+        for mailbox in &mut self.mailboxes {
+            mailbox
+                .lock()
+                .expect("acquiring lock")
+                .sync(&format!("{}/{}", self.store, self.name));
         }
     }
 }

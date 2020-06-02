@@ -5,8 +5,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-use super::mailbox::MailBox;
-
 fn get_config_file_path() -> Result<String, String> {
     let xdg_home = env::var("XDG_CONFIG_HOME");
     let folder = match xdg_home {
@@ -23,6 +21,12 @@ fn get_config_file_path() -> Result<String, String> {
         .map_err(|_| "could not find config file".to_string())
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Mb {
+    pub local: String,
+    pub remote: String
+}
+
 #[derive(Deserialize,Debug)]
 pub struct Config {
     pub url: String,
@@ -31,7 +35,7 @@ pub struct Config {
     pub pass_cmd: String,
     pub ssl_type: bool,
     pub folder: String,
-    pub mailboxes: HashMap<String, MailBox>,
+    pub mailboxes: HashMap<String, Mb>,
 }
 
 pub fn get_config() -> Result<HashMap<String, Config>, String> {

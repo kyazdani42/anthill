@@ -50,9 +50,7 @@ impl State {
 
     pub fn connect(&mut self) {
         for account in &mut self.accounts {
-            if let Err(e) = account.connect() {
-                eprintln!("could not connect to {}: {}", account.name, e);
-            }
+            account.connect();
         }
     }
 
@@ -70,9 +68,12 @@ impl State {
         }
     }
 
+    // TODO: find a way for the mailbox to not require a mutex.
+    // as each mailbox is independant from each other, there is no risk of data race.
     pub fn mkdir_all(&self) -> Result<(), std::io::Error> {
         for account in &self.accounts {
             for mailbox in &account.mailboxes {
+                let mailbox = mailbox.lock().expect("acquiring lock");
                 create_dir_all(format!(
                     "{}/{}/{}/cur",
                     account.store, account.name, mailbox.local

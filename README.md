@@ -12,7 +12,6 @@ this is very early stage, completely untested, lots of lacking features.
 
 ## Install
 
-git:
 ```
 git clone https://git.sr.ht/~yazdan/anthill
 cd anthill && cargo build --release
@@ -22,7 +21,8 @@ cd anthill && cargo build --release
 
 - [ ] cli
 - [ ] remove out of date messages
-- [ ] multithreading and request parallelism
+- [ ] multithread mailbox sync
+- [ ] multiple body download at the same time
 - [ ] SSL/TLS
 - [ ] password: gpg
 - [ ] 2 way sync (expunge requests and cleanup mailboxes)
