@@ -58,24 +58,23 @@ pub struct Message<'a> {
 }
 
 // TODO: Errors
-pub fn get_remote_messages(
+pub fn get_remote_messages<'a>(
     session: &mut AnthillSession,
-    all_messages: &mut Vec<Message>,
-) -> imap::error::Result<()> {
+) -> imap::error::Result<Vec<Message<'a>>> {
     let messages = session.fetch("1:*", "(UID ENVELOPE FLAGS)")?;
 
-    *all_messages = Vec::with_capacity(messages.len());
-    for (i, msg) in messages.iter().enumerate() {
+    let mut all_messages = vec![];
+    for msg in messages.iter() {
         let uid = if let Some(uid) = msg.uid {
             uid
         } else {
-            eprintln!("message {} does not have an uid", i + 1);
+            eprintln!("message does not have an uid");
             continue;
         };
 
         let envelope = msg.envelope();
         if let None = envelope {
-            eprintln!("message {} does not have an envelope", i + 1);
+            eprintln!("message {} does not have an envelope", uid);
             continue;
         };
 
@@ -94,11 +93,11 @@ pub fn get_remote_messages(
                 uid,
             });
         } else {
-            eprintln!("message id for message {} is not valid utf-8", i + 1);
+            eprintln!("message id for message {} is not valid utf-8", uid);
         }
     }
 
-    Ok(())
+    Ok(all_messages)
 }
 
 fn format_flag<'a>(flag: &Flag) -> &'a str {

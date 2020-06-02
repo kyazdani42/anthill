@@ -44,24 +44,23 @@ impl MailBox {
         }
     }
 
-    pub fn sync(&mut self, store: &str) -> AnthillResult<()> {
-        let mut sessions = vec![];
+    fn fetch_messages<'a>(&self) -> AnthillResult<Vec<Message<'a>>> {
+        let mut session = create_session(&self.url, &self.login, &self.pass, &self.remote)?;
 
-        sessions.push(create_session(
-            &self.url,
-            &self.login,
-            &self.pass,
-            &self.remote,
-        )?);
-
-        let mut messages = vec![];
-        get_remote_messages(&mut sessions[0], &mut messages).map_err(|e| {
+        let messages = get_remote_messages(&mut session).map_err(|e| {
             format!(
                 "Error when fetching message info for mailbox {}: {}",
                 self.remote, e
             )
         })?;
 
+        logout(session)?;
+
+        Ok(messages)
+    }
+
+    pub fn sync(&mut self, store: &str) -> AnthillResult<()> {
+        let messages = self.fetch_messages()?;
         let mail_folder = format!("{}/{}", store, self.local);
         let local_uids = get_local_uids(&mail_folder);
 
@@ -72,7 +71,14 @@ impl MailBox {
             }
             println!("Fetching message `{}` in `{}`", data.msg_id, &self.remote);
             let mail_folder = mail_folder.clone();
-            let mut session = create_session(&self.url, &self.login, &self.pass, &self.remote)?;
+            let mut session = match create_session(&self.url, &self.login, &self.pass, &self.remote)
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    continue;
+                }
+            };
             threads.push(thread::spawn(move || {
                 let result = fetch_body(&mut session, data.uid);
                 if result.is_err() {
@@ -84,21 +90,19 @@ impl MailBox {
                     return;
                 };
                 sync_msg(&body, &data, &mail_folder);
+                if let Err(e) = logout(session) {
+                    eprintln!("{}", e);
+                }
             }));
         }
 
         for tx in threads {
-            tx.join().expect("fetching message bodies");
-        }
-
-        let mut result = Ok(());
-        for session in sessions {
-            if let Err(e) = logout(session) {
-                result = Err(format!("error when logging out from server: {}", e));
+            if let Err(_) = tx.join() {
+                eprintln!("waiting for thread syncing to finish");
             }
         }
 
-        result
+        Ok(())
     }
 }
 
