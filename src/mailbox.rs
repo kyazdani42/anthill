@@ -73,7 +73,7 @@ impl MailBox {
         let local_uids = get_local_uids(&mail_folder);
 
         for data in &messages {
-            sync_msg(session, data, &mail_folder, &local_uids);
+            sync_msg(session, data, &mail_folder, &local_uids, &self.remote);
         }
     }
 }
@@ -83,12 +83,13 @@ fn sync_msg(
     data: &Message,
     mail_folder: &str,
     local_uids: &HashSet<u32>,
+    mailbox_name: &str
 ) {
     if let Some(_) = local_uids.get(&data.uid) {
         return;
     }
 
-    println!("Fetching body for message {}", data.uid);
+    println!("Fetching message `{}` in `{}`", data.msg_id, mailbox_name);
     let body = if let Ok(v) = fetch_body(session, data.uid) {
         if let Some(v) = v {
             v

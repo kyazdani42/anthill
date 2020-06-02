@@ -99,11 +99,21 @@ impl Account {
     }
 
     pub fn sync(&mut self) {
-        for mailbox in &mut self.mailboxes {
-            mailbox
-                .lock()
-                .expect("acquiring lock")
-                .sync(&format!("{}/{}", self.store, self.name));
+        let mut threads = vec![];
+        for mailbox in &self.mailboxes {
+            let mailbox = mailbox.clone();
+            let store = self.store.clone();
+            let name = self.name.clone();
+            threads.push(thread::spawn(move || {
+                mailbox
+                    .lock()
+                    .expect("acquiring lock")
+                    .sync(&format!("{}/{}", store, name));
+            }));
+        }
+
+        for tx in threads {
+            tx.join().expect("waiting for thread to finish syncing");
         }
     }
 }
