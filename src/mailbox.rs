@@ -1,104 +1,108 @@
-use imap::types::Flag;
-use imap::Session;
 use rand::{thread_rng, Rng};
 use regex::Regex;
 
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
-use std::net::TcpStream;
 use std::path::Path;
+use std::thread;
 
-use super::HOSTNAME;
+use super::stream::{
+    create_session, fetch_body, get_remote_messages, logout, AnthillResult, Message,
+};
+use super::{Password, HOSTNAME};
 
 const EPOCH: std::time::SystemTime = std::time::SystemTime::UNIX_EPOCH;
 
-#[derive(Clone)]
-struct Message<'a> {
-    uid: u32,
-    msg_id: String,
-    flags: Vec<&'a str>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MailBox {
     pub local: String,
     remote: String,
-    pub session: Option<Session<TcpStream>>,
+    pass: String,
+    login: String,
+    url: String,
 }
 
 impl MailBox {
-    pub fn new(local: &String, remote: &String) -> Self {
-        Self {
-            local: local.to_string(),
-            remote: remote.to_string(),
-            session: None,
-        }
-    }
-
-    pub fn set_session(&mut self, session: Session<TcpStream>) {
-        self.session = Some(session);
-    }
-
-    pub fn logout(&mut self) {
-        if let Some(ref mut s) = self.session {
-            s.logout().expect("logging out");
-            self.session = None;
-        }
-    }
-
-    pub fn sync(&mut self, store: &str) {
-        let session = if let Some(ref mut s) = self.session {
-            s
-        } else {
-            return;
+    pub fn new(
+        local: String,
+        remote: String,
+        password: Password,
+        login: String,
+        url: String,
+    ) -> Self {
+        let pass = match password {
+            Password::Static(p) => p.to_string(),
+            Password::GPG(p) => p.to_string(),
         };
-
-        if let Err(e) = session.select(&self.remote) {
-            return eprintln!(
-                "Error when accessing data for mailbox {}: {}",
-                self.remote, e
-            );
+        Self {
+            local,
+            remote,
+            pass,
+            login,
+            url,
         }
+    }
+
+    pub fn sync(&mut self, store: &str) -> AnthillResult<()> {
+        let mut sessions = vec![];
+
+        sessions.push(create_session(
+            &self.url,
+            &self.login,
+            &self.pass,
+            &self.remote,
+        )?);
 
         let mut messages = vec![];
-        if let Err(e) = get_remote_messages(session, &mut messages) {
-            return eprintln!(
+        get_remote_messages(&mut sessions[0], &mut messages).map_err(|e| {
+            format!(
                 "Error when fetching message info for mailbox {}: {}",
                 self.remote, e
-            );
-        }
+            )
+        })?;
 
         let mail_folder = format!("{}/{}", store, self.local);
         let local_uids = get_local_uids(&mail_folder);
 
-        for data in &messages {
-            sync_msg(session, data, &mail_folder, &local_uids, &self.remote);
+        let mut threads = vec![];
+        for data in messages {
+            if let Some(_) = local_uids.get(&data.uid) {
+                continue;
+            }
+            println!("Fetching message `{}` in `{}`", data.msg_id, &self.remote);
+            let mail_folder = mail_folder.clone();
+            let mut session = create_session(&self.url, &self.login, &self.pass, &self.remote)?;
+            threads.push(thread::spawn(move || {
+                let result = fetch_body(&mut session, data.uid);
+                if result.is_err() {
+                    return;
+                }
+                let body = if let Some(v) = result.unwrap() {
+                    v
+                } else {
+                    return;
+                };
+                sync_msg(&body, &data, &mail_folder);
+            }));
         }
+
+        for tx in threads {
+            tx.join().expect("fetching message bodies");
+        }
+
+        let mut result = Ok(());
+        for session in sessions {
+            if let Err(e) = logout(session) {
+                result = Err(format!("error when logging out from server: {}", e));
+            }
+        }
+
+        result
     }
 }
 
-fn sync_msg(
-    session: &mut imap::Session<TcpStream>,
-    data: &Message,
-    mail_folder: &str,
-    local_uids: &HashSet<u32>,
-    mailbox_name: &str
-) {
-    if let Some(_) = local_uids.get(&data.uid) {
-        return;
-    }
-
-    println!("Fetching message `{}` in `{}`", data.msg_id, mailbox_name);
-    let body = if let Ok(v) = fetch_body(session, data.uid) {
-        if let Some(v) = v {
-            v
-        } else {
-            return;
-        }
-    } else {
-        return;
-    };
+fn sync_msg(body: &[u8], data: &Message, mail_folder: &str) {
     let rnd = thread_rng().gen::<u16>();
     let now = std::time::SystemTime::now()
         .duration_since(EPOCH)
@@ -132,26 +136,6 @@ fn sync_msg(
     }
 }
 
-fn fetch_body(
-    session: &mut imap::Session<TcpStream>,
-    uid: u32,
-) -> imap::error::Result<Option<Vec<u8>>> {
-    let message = session.uid_fetch(uid.to_string(), "(BODY[])")?;
-    let body = message
-        .iter()
-        .next()
-        .expect(&format!("message with uid {} should have a body", uid))
-        .body();
-    let body = if let Some(v) = body {
-        v
-    } else {
-        eprintln!("message {} did not have a body", uid);
-        return Ok(None);
-    };
-
-    Ok(Some(body.to_owned()))
-}
-
 fn get_local_uids(mail_folder: &str) -> HashSet<u32> {
     let mut uids = HashSet::new();
 
@@ -182,62 +166,8 @@ fn get_local_uids(mail_folder: &str) -> HashSet<u32> {
     uids
 }
 
-fn get_remote_messages(
-    session: &mut imap::Session<TcpStream>,
-    all_messages: &mut Vec<Message>,
-) -> imap::error::Result<()> {
-    let messages = session.fetch("1:*", "(UID ENVELOPE FLAGS)")?;
-
-    *all_messages = Vec::with_capacity(messages.len());
-    for (i, msg) in messages.iter().enumerate() {
-        let uid = if let Some(uid) = msg.uid {
-            uid
-        } else {
-            eprintln!("message {} does not have an uid", i + 1);
-            continue;
-        };
-
-        let envelope = msg.envelope();
-        if let None = envelope {
-            eprintln!("message {} does not have an envelope", i + 1);
-            continue;
-        };
-
-        let envelope = envelope.unwrap();
-        let msg_id = if let Some(msg_id) = envelope.message_id {
-            msg_id
-        } else {
-            eprintln!("message {} does not have an associated message id", uid);
-            continue;
-        };
-
-        if let Ok(msg_id) = std::str::from_utf8(msg_id) {
-            all_messages.push(Message {
-                msg_id: msg_id.to_string(),
-                flags: msg.flags().iter().map(format_flag).collect(),
-                uid,
-            });
-        } else {
-            eprintln!("message id for message {} is not valid utf-8", i + 1);
-        }
-    }
-
-    Ok(())
-}
-
 fn transform_flags(flags: &Vec<&str>) -> String {
     flags
         .iter()
         .fold("".to_string(), |a, f| format!("{}{}", a, f))
-}
-
-fn format_flag<'a>(flag: &Flag) -> &'a str {
-    match flag {
-        Flag::Seen => "S",
-        Flag::Flagged => "F",
-        Flag::Answered => "R",
-        Flag::Deleted => "D",
-        // TODO
-        Flag::Recent | Flag::MayCreate | Flag::Draft | Flag::Custom(_) => "",
-    }
 }

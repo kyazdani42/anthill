@@ -19,11 +19,10 @@ cd anthill && cargo build --release
 
 ## TODO
 
-- 1 | multiple body download at the same time
-- 2 | remove out of date messages
-- 3 | cli
-- 4 | SSL/TLS
-- 5 | password: gpg
-- 6 | doc
-- 7 | 2 way sync (expunge requests and cleanup mailboxes)
-- 8 | OAUTH/XOAUTH (gmail)
+- 1 | remove out of date messages
+- 2 | cli
+- 3 | SSL/TLS
+- 4 | password: gpg
+- 5 | doc
+- 6 | 2 way sync (expunge requests and cleanup mailboxes)
+- 7 | OAUTH/XOAUTH (gmail)
