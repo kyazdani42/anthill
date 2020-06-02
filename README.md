@@ -2,13 +2,16 @@
 
 ## Notice
 
-this is very early stage, completely untested, lots of lacking features.
+this is quite early stage, right now only syncing new mail is working (no purge/expunge).
 
 ## Why
 
 - I had issues with isync and offlineimap that couldn't be solved easily.
-- Mailbox should be fetch in parallel.
-- Syncing mailboxes should be fast.
+- Every imap syncing tool is super slow, syncing one request at a time.
+- This tool allows you to download mail quickly, using the power of multithreading combined with the speed of rust.
+    - one account at a time
+    - parallelize mailboxes (all mailboxes are syncing at the same time)
+    - parallelize body fetch (mails are downloaded in parallel)
 
 ## Install
 
@@ -16,6 +19,10 @@ this is very early stage, completely untested, lots of lacking features.
 git clone https://git.sr.ht/~yazdan/anthill
 cd anthill && cargo build --release
 ```
+
+## Performance
+
+> TODO, but right now i realized syncing my mails take 5/10 sec compared to 3/5 min with offlineimap/isync
 
 ## TODO
 
