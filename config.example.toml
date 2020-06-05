@@ -1,0 +1,15 @@
+[accountname]
+url="imap.server.com"
+port=143
+user="email.address"
+pass_cmd="cat ~/.cache/imap_password"
+with_tls=false
+folder="~/.cache/mail"
+
+[accountname.mailboxes]
+inbox = { remote="INBOX", local="Inbox" }
+sent = { remote="Sent", local="sent" }
+spam = { remote="Spam", local="spam" }
+drafts = { remote="Drafts", local="drafts" }
+trash = { remote="Trash", local="trash" }
+allmail = { remote="All Mail", local="allmail" }

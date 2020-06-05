@@ -21,6 +21,7 @@ pub struct MailBox {
     pass: String,
     login: String,
     url: String,
+    with_tls: bool,
 }
 
 impl MailBox {
@@ -30,6 +31,7 @@ impl MailBox {
         password: Password,
         login: String,
         url: String,
+        with_tls: bool,
     ) -> Self {
         let pass = match password {
             Password::Static(p) => p.to_string(),
@@ -41,11 +43,18 @@ impl MailBox {
             pass,
             login,
             url,
+            with_tls,
         }
     }
 
     fn fetch_messages<'a>(&self) -> AnthillResult<Vec<Message<'a>>> {
-        let mut session = create_session(&self.url, &self.login, &self.pass, &self.remote)?;
+        let mut session = create_session(
+            &self.url,
+            &self.login,
+            &self.pass,
+            &self.remote,
+            self.with_tls,
+        )?;
 
         let messages = get_remote_messages(&mut session).map_err(|e| {
             format!(
@@ -71,8 +80,13 @@ impl MailBox {
             }
             println!("Fetching message `{}` in `{}`", data.msg_id, &self.remote);
             let mail_folder = mail_folder.clone();
-            let mut session = match create_session(&self.url, &self.login, &self.pass, &self.remote)
-            {
+            let mut session = match create_session(
+                &self.url,
+                &self.login,
+                &self.pass,
+                &self.remote,
+                self.with_tls,
+            ) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("{}", e);

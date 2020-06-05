@@ -1,18 +1,69 @@
 use imap::types::Flag;
 use imap::{Client, Session};
+use std::io::{Read, Write};
 use std::net;
 
+pub enum Stream {
+    TLS(native_tls::TlsStream<net::TcpStream>),
+    NOTLS(net::TcpStream),
+}
+
+impl Stream {
+    pub fn new(with_tls: bool, url: &str) -> AnthillResult<Self> {
+        let tcp_stream = net::TcpStream::connect(url)
+            .map_err(|e| format!("could not connect to Tcp Stream: {}", e))?;
+        let s = if with_tls {
+            let tls = native_tls::TlsConnector::builder()
+                .build()
+                .map_err(|e| format!("could not initialize tls connexion: {}", e))?;
+            let tls = tls
+                .connect(url, tcp_stream)
+                .map_err(|e| format!("failed to connect with tls: {}", e))?;
+            Stream::TLS(tls)
+        } else {
+            Stream::NOTLS(tcp_stream)
+        };
+
+        Ok(s)
+    }
+}
+
+impl Read for Stream {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        match self {
+            Stream::TLS(s) => s.read(buf),
+            Stream::NOTLS(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for Stream {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
+        match self {
+            Stream::TLS(s) => s.write(buf),
+            Stream::NOTLS(s) => s.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), std::io::Error> {
+        match self {
+            Stream::TLS(s) => s.flush(),
+            Stream::NOTLS(s) => s.flush(),
+        }
+    }
+}
+
 pub type AnthillResult<T> = Result<T, String>;
-pub type AnthillSession = Session<net::TcpStream>;
+pub type AnthillSession = Session<Stream>;
 
 pub fn create_session(
     url: &str,
     login: &str,
     pass: &str,
     mailbox: &str,
+    with_tls: bool,
 ) -> AnthillResult<AnthillSession> {
-    let stream = std::net::TcpStream::connect(url)
-        .map_err(|e| format!("could not connect to Tcp Stream: {}", e))?;
+    let stream = Stream::new(with_tls, url)?;
 
     let mut session = Client::new(stream)
         .login(login, pass)

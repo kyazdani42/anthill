@@ -33,7 +33,7 @@ pub struct Config {
     pub port: u16,
     pub user: String,
     pub pass_cmd: String,
-    pub ssl_type: bool,
+    pub with_tls: bool,
     pub folder: String,
     pub mailboxes: HashMap<String, Mb>,
 }

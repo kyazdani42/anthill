@@ -87,7 +87,6 @@ pub struct Account {
     pub name: String,
     pub store: String,
     pub mailboxes: Vec<MailBox>,
-    with_ssl: bool,
 }
 
 impl Account {
@@ -98,7 +97,6 @@ impl Account {
         Ok(Self {
             store,
             name,
-            with_ssl: data.ssl_type,
             mailboxes: data
                 .mailboxes
                 .iter()
@@ -109,6 +107,7 @@ impl Account {
                         password.clone(),
                         data.user.to_string(),
                         format!("{}:{}", data.url, data.port),
+                        data.with_tls,
                     )
                 })
                 .collect(),

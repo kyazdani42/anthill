@@ -28,8 +28,7 @@ cd anthill && cargo build --release
 
 - 1 | add tests
 - 2 | cli
-- 3 | SSL/TLS
-- 4 | password: gpg
-- 5 | doc
-- 6 | 2 way sync (expunge requests and cleanup mailboxes)
-- 7 | OAUTH/XOAUTH (gmail)
+- 3 | password: gpg
+- 4 | doc
+- 5 | 2 way sync (expunge requests and cleanup mailboxes)
+- 6 | OAUTH/XOAUTH (gmail)
