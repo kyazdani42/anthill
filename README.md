@@ -2,7 +2,7 @@
 
 ## Notice
 
-this is quite early stage, right now only syncing new mail is working (no purge/expunge).
+this is quite early stage, right now only syncing new mail is working (downloading new mail and removing obsolete mails).
 
 ## Why
 
@@ -26,7 +26,7 @@ cd anthill && cargo build --release
 
 ## TODO
 
-- 1 | remove out of date messages
+- 1 | add tests
 - 2 | cli
 - 3 | SSL/TLS
 - 4 | password: gpg

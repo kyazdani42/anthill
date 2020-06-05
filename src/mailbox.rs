@@ -62,7 +62,7 @@ impl MailBox {
     pub fn sync(&mut self, store: &str) -> AnthillResult<()> {
         let messages = self.fetch_messages()?;
         let mail_folder = format!("{}/{}", store, self.local);
-        let local_uids = get_local_uids(&mail_folder);
+        let local_uids = manage_local_mails(&mail_folder, &messages);
 
         let mut threads = vec![];
         for data in messages {
@@ -140,7 +140,7 @@ fn sync_msg(body: &[u8], data: &Message, mail_folder: &str) {
     }
 }
 
-fn get_local_uids(mail_folder: &str) -> HashSet<u32> {
+fn manage_local_mails(mail_folder: &str, upstream_mail: &Vec<Message>) -> HashSet<u32> {
     let mut uids = HashSet::new();
 
     let folder = Path::new(mail_folder);
@@ -154,16 +154,22 @@ fn get_local_uids(mail_folder: &str) -> HashSet<u32> {
                 .expect("reading a dir entry")
                 .file_name()
                 .into_string()
-                .expect("converting filename");
+                .expect("converting filename into string");
             let matches = if let Some(m) = re.find(&mail) {
                 m
             } else {
                 continue;
             };
             let (a, b) = (matches.start(), matches.end());
-            let st = std::str::from_utf8(&mail.as_bytes()[a + 2..b - 1])
-                .expect("convert matching regex to utf8");
-            uids.insert(st.parse::<u32>().unwrap());
+            let uid = std::str::from_utf8(&mail.as_bytes()[a + 2..b - 1])
+                .expect("convert matching regex to utf8")
+                .parse::<u32>()
+                .unwrap();
+            if upstream_mail.iter().any(|mail| mail.uid == uid) {
+                uids.insert(uid);
+            } else {
+                fs::remove_file(f.join(mail).to_owned()).expect("removing mail");
+            }
         }
     }
 
