@@ -4,6 +4,10 @@
 
 this is quite early stage, right now only syncing new mail is working (downloading new mail and removing obsolete mails).
 
+## NOTICE TEMP
+
+Do not use this as it is, it doesn't work properly. I must spend some time on it but don't have enought time lately, but i'll come back :) when it's done, it's gonna be the best imap sync tool ever, i promise !
+
 ## Why
 
 - I had issues with isync and offlineimap that couldn't be solved easily.
